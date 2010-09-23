@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+
+from optparse import OptionParser
+import sys
+import os
+import re
+
+
+def main():
+
+    parser = OptionParser()
+    parser.add_option("-f", "--hdfs", dest="hdfs", default=False, help="The HDFS URL")
+    parser.add_option('-s', '--servers', dest="servers", metavar="FILE", default=None,
+                        help="File containing a list of Hadoop datanodes (default: stdin)")
+    options, args = parser.parse_args()
+
+    if not options.hdfs:
+        parser.print_help()
+        return -1
+
+    if options.servers == '-' or not options.servers:
+        hosts = list(sys.stdin.readlines())
+    else:
+        hosts = [x for x in file(options.servers, 'r') if not x.startswith('#')]
+    hosts = [x.strip(' \r\n\t') for x in hosts]
+
+    dfsadmin_cmd  = "sudo -u hadoop hadoop-0.20 dfsadmin -fs %s -report" % options.hdfs
+    cmdPipe = os.popen(dfsadmin_cmd)
+    lines = cmdPipe.readlines()
+    cmdPipe.close()
+
+    live_nodes = []
+
+    for line in lines:
+        if line.startswith("Name"):
+            matchObj = re.match( r'Name: (.*):', line)
+            if matchObj:
+                live_nodes.append(matchObj.group(1))
+            else:
+                print "wtf: regex did not match"
+                return 1
+
+    dead_nodes = set(hosts).difference(set(live_nodes))
+    if len(dead_nodes) == 0:
+        print "zero dead nodes out of %s nodes" % len(hosts)
+    else:
+        print "dead nodes:"
+        for x in dead_nodes:
+            print x
+
+if __name__ == '__main__':
+    sys.exit(main())
+
